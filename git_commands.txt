@@ -1,0 +1,41 @@
+# Git命令步骤（复制粘贴到终端执行）
+
+# 1. 进入项目目录
+cd "/Users/Shared/Files From d.localized/projects/cpk_data_analyze"
+
+# 2. 初始化Git仓库
+git init
+
+# 3. 添加所有文件
+git add .
+
+# 4. 创建首次提交
+git commit -m "初始提交：牧场数据CPK分析系统"
+
+# 5. 添加您的远程仓库
+git remote add origin https://github.com/Barton0411/cpk2025.git
+
+# 6. 推送到GitHub
+git branch -M main
+git push -u origin main
+
+# 如果提示输入用户名和密码：
+# Username: Barton0411
+# Password: 需要使用Personal Access Token（见下方说明）
+
+# ========== 创建Personal Access Token ==========
+# 1. 访问: https://github.com/settings/tokens
+# 2. 点击 "Generate new token" → "Generate new token (classic)"
+# 3. Note填写: cpk2025-deploy
+# 4. 选择过期时间（建议90天）
+# 5. 勾选权限:
+#    - [x] repo (全部)
+# 6. 点击 "Generate token"
+# 7. 复制token（只显示一次！）
+# 8. 在提示输入密码时，粘贴这个token
+
+# ========== 后续更新代码 ==========
+# 修改代码后执行：
+git add .
+git commit -m "更新说明"
+git push
