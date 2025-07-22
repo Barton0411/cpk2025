@@ -6,8 +6,8 @@ class StatisticsCalculator:
         self.traits = ['脂肪', '蛋白', '干物质', '酸度', '体细胞']
         self.display_traits = ['脂肪', '蛋白', '干物质', '酸度', '体细胞']
     
-    def calculate_statistics(self, df, coefficients):
-        """计算所有统计指标"""
+    def calculate_statistics(self, df, coefficients, cpk_threshold_type=None, cpk_threshold=1.0, cpk_min=-999, cpk_max=999):
+        """计算所有统计指标，包括CPK异常状态"""
         # 清理数据
         numeric_columns = self.traits
         for col in numeric_columns:
@@ -87,10 +87,18 @@ class StatisticsCalculator:
                         row_data[f'{display_trait}_cpk'] = round(cpk_raw, 3)
                         row_data[f'{display_trait}_公差'] = round(tolerance, 3) if tolerance else '/'
                         row_data[f'{display_trait}_cp'] = round(cp_raw, 3) if cp_raw else '/'
+                        
+                        # 添加CPK异常状态判断
+                        if cpk_threshold_type == "小于阈值为异常":
+                            row_data[f'{display_trait}_cpk_状态'] = '异常' if cpk_raw < cpk_threshold else '正常'
+                        elif cpk_threshold_type == "自定义范围":
+                            row_data[f'{display_trait}_cpk_状态'] = '异常' if (cpk_raw < cpk_min or cpk_raw > cpk_max) else '正常'
+                        else:
+                            row_data[f'{display_trait}_cpk_状态'] = '-'
                     else:
                         # 没有数据时填充空值
-                        for suffix in ['σ', '均值', '过程值差值', '6σ', '3σ', 'cpk', '公差', 'cp']:
-                            row_data[f'{display_trait}_{suffix}'] = np.nan
+                        for suffix in ['σ', '均值', '过程值差值', '6σ', '3σ', 'cpk', '公差', 'cp', 'cpk_状态']:
+                            row_data[f'{display_trait}_{suffix}'] = np.nan if suffix != 'cpk_状态' else '-'
             
             results.append(row_data)
         

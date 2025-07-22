@@ -462,7 +462,14 @@ if uploaded_file is not None:
                 
                 # 计算详细统计指标
                 st.header("📈 详细分析结果")
-                results = stats_calculator.calculate_statistics(filtered_df, coefficients)
+                results = stats_calculator.calculate_statistics(
+                    filtered_df, 
+                    coefficients,
+                    cpk_threshold_type=cpk_threshold_type,
+                    cpk_threshold=cpk_threshold if cpk_threshold_type == "小于阈值为异常" else 1.0,
+                    cpk_min=cpk_min,
+                    cpk_max=cpk_max
+                )
                 st.dataframe(results, use_container_width=True)
                 
                 # 下载结果
@@ -489,7 +496,7 @@ if uploaded_file is not None:
         
         # CPK异常筛选
         st.header("CPK异常筛选")
-        st.info("💡 CPK异常筛选使用全部数据，不受上方数据筛选条件限制")
+        st.info("💡 CPK异常筛选基于上方数据筛选的结果")
         
         # 显示当前判定标准
         if cpk_threshold_type == "小于阈值为异常":
@@ -500,15 +507,7 @@ if uploaded_file is not None:
         col1, col2 = st.columns(2)
         
         with col1:
-            st.subheader("筛选时间范围")
-            # 时间范围选择
-            cpk_date_range = st.date_input(
-                "选择分析时间段",
-                value=[],
-                help="留空则分析全部时间数据",
-                key="cpk_date_select"
-            )
-            
+            st.subheader("分析设置")
             # 分析粒度
             analysis_period = st.radio(
                 "分析粒度",
@@ -517,7 +516,7 @@ if uploaded_file is not None:
             )
         
         with col2:
-            st.subheader("筛选对象范围")
+            st.subheader("分析维度")
             filter_object = st.radio(
                 "选择分析维度",
                 options=["按大区", "按区域", "按牧场"],
@@ -537,17 +536,8 @@ if uploaded_file is not None:
                     '酸度_tolerance': tolerance_acid
                 }
                 
-                # 使用全部数据进行CPK异常筛选，不受数据筛选影响
-                cpk_df = df.copy()  # 使用原始完整数据
-                
-                # 应用时间范围筛选
-                if cpk_date_range and len(cpk_date_range) == 2:
-                    start_date, end_date = cpk_date_range
-                    if '入库日期' in cpk_df.columns:
-                        start_datetime = pd.Timestamp(start_date).replace(hour=0, minute=0, second=0)
-                        end_datetime = pd.Timestamp(end_date).replace(hour=23, minute=59, second=59)
-                        mask = (cpk_df['入库日期'] >= start_datetime) & (cpk_df['入库日期'] <= end_datetime)
-                        cpk_df = cpk_df[mask]
+                # 使用筛选后的数据进行CPK异常筛选
+                cpk_df = filtered_df.copy()  # 使用筛选后的数据
                 
                 # 根据分析粒度添加时间列
                 if '入库日期' in cpk_df.columns:
@@ -697,24 +687,17 @@ if uploaded_file is not None:
                     
                     elif filter_object == "按牧场":
                         # 按牧场和时间段分组计算
-                        results = stats_calculator.calculate_statistics(cpk_df, coefficients)
+                        results = stats_calculator.calculate_statistics(
+                            cpk_df, 
+                            coefficients,
+                            cpk_threshold_type=cpk_threshold_type,
+                            cpk_threshold=cpk_threshold if cpk_threshold_type == "小于阈值为异常" else 1.0,
+                            cpk_min=cpk_min,
+                            cpk_max=cpk_max
+                        )
                         
-                        # 筛选CPK异常
-                        cpk_columns = [col for col in results.columns if col.endswith('_cpk')]
-                        
-                        # 创建异常标记
-                        for col in cpk_columns:
-                            if cpk_threshold_type == "小于阈值为异常":
-                                results[f'{col}_异常'] = results[col].apply(
-                                    lambda x: '异常' if pd.notna(x) and x < cpk_threshold else '正常'
-                                )
-                            else:
-                                results[f'{col}_异常'] = results[col].apply(
-                                    lambda x: '异常' if pd.notna(x) and (x < cpk_min or x > cpk_max) else '正常'
-                                )
-                        
-                        # 筛选包含异常的行
-                        abnormal_columns = [col for col in results.columns if col.endswith('_异常')]
+                        # 筛选包含异常的行（状态列已经在calculate_statistics中生成）
+                        abnormal_columns = [col for col in results.columns if col.endswith('_cpk_状态')]
                         mask = results[abnormal_columns].apply(lambda row: '异常' in row.values, axis=1)
                         abnormal_results = results[mask]
                         
