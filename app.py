@@ -122,6 +122,37 @@ with st.sidebar:
     # 公差设置
     st.subheader("公差设置")
     tolerance_acid = st.number_input("酸度公差", value=5.5, step=0.1)
+    
+    # CPK异常判定设置
+    st.subheader("CPK异常判定")
+    cpk_threshold_type = st.radio(
+        "判定方式",
+        options=["小于阈值为异常", "自定义范围"],
+        index=0,
+        key="sidebar_cpk_type"
+    )
+    
+    if cpk_threshold_type == "小于阈值为异常":
+        cpk_threshold = st.number_input("CPK阈值", value=1.0, step=0.1, help="CPK小于此值为异常")
+        st.caption("默认：CPK < 1.0 为异常")
+        # 内部使用
+        cpk_min = -999
+        cpk_max = cpk_threshold
+    else:
+        st.write("CPK正常范围")
+        col_min, col_max = st.columns(2)
+        with col_min:
+            cpk_min = st.number_input("最小值", value=1.0, step=0.1, key="cpk_min_input")
+        with col_max:
+            cpk_max = st.number_input("最大值", value=999.0, step=0.1, key="cpk_max_input")
+        st.caption("CPK在此范围外为异常")
+
+# 确保CPK判定变量在全局作用域可用
+if 'cpk_min' not in locals():
+    cpk_min = -999
+    cpk_max = 1.0
+if 'cpk_threshold' not in locals():
+    cpk_threshold = 1.0
 
 # 主界面
 st.title("🐄 牧场数据CPK分析系统")
@@ -460,22 +491,35 @@ if uploaded_file is not None:
         st.header("CPK异常筛选")
         st.info("💡 CPK异常筛选使用全部数据，不受上方数据筛选条件限制")
         
+        # 显示当前判定标准
+        if cpk_threshold_type == "小于阈值为异常":
+            st.success(f"📊 当前判定标准：CPK < {cpk_threshold} 为异常")
+        else:
+            st.success(f"📊 当前判定标准：CPK < {cpk_min} 或 CPK > {cpk_max} 为异常")
+        
         col1, col2 = st.columns(2)
         
         with col1:
-            cpk_min = st.number_input("CPK最小值", value=0.0, step=0.1)
-            cpk_max = st.number_input("CPK最大值", value=1.0, step=0.1)
-        
-        with col2:
-            # 筛选范围
-            filter_scope = st.multiselect(
-                "筛选异常的时间范围",
-                options=["单月"],
-                default=["单月"]
+            st.subheader("筛选时间范围")
+            # 时间范围选择
+            cpk_date_range = st.date_input(
+                "选择分析时间段",
+                value=[],
+                help="留空则分析全部时间数据",
+                key="cpk_date_select"
             )
             
+            # 分析粒度
+            analysis_period = st.radio(
+                "分析粒度",
+                options=["按月", "按季度", "按年"],
+                index=0
+            )
+        
+        with col2:
+            st.subheader("筛选对象范围")
             filter_object = st.radio(
-                "筛选异常的对象范围",
+                "选择分析维度",
                 options=["按大区", "按区域", "按牧场"],
                 index=1  # 默认选中"按区域"
             )
@@ -496,30 +540,44 @@ if uploaded_file is not None:
                 # 使用全部数据进行CPK异常筛选，不受数据筛选影响
                 cpk_df = df.copy()  # 使用原始完整数据
                 
+                # 应用时间范围筛选
+                if cpk_date_range and len(cpk_date_range) == 2:
+                    start_date, end_date = cpk_date_range
+                    if '入库日期' in cpk_df.columns:
+                        start_datetime = pd.Timestamp(start_date).replace(hour=0, minute=0, second=0)
+                        end_datetime = pd.Timestamp(end_date).replace(hour=23, minute=59, second=59)
+                        mask = (cpk_df['入库日期'] >= start_datetime) & (cpk_df['入库日期'] <= end_datetime)
+                        cpk_df = cpk_df[mask]
+                
+                # 根据分析粒度添加时间列
+                if '入库日期' in cpk_df.columns:
+                    if analysis_period == "按月":
+                        cpk_df['时间段'] = cpk_df['入库日期'].dt.to_period('M')
+                    elif analysis_period == "按季度":
+                        cpk_df['时间段'] = cpk_df['入库日期'].dt.to_period('Q')
+                    elif analysis_period == "按年":
+                        cpk_df['时间段'] = cpk_df['入库日期'].dt.to_period('Y')
+                
                 # 根据筛选范围计算
-                if "单月" in filter_scope:
+                if True:  # 始终执行分析
                     # 单月分析
                     if filter_object == "按大区":
                         # 按大区和月份分组计算
                         results_list = []
                         
-                        # 确保有年月列
-                        if '年月' not in cpk_df.columns and '入库日期' in cpk_df.columns:
-                            cpk_df['年月'] = cpk_df['入库日期'].dt.to_period('M')
-                        
-                        # 获取所有大区和月份的组合
-                        if '年月' in cpk_df.columns and '大区' in cpk_df.columns:
-                            grouped = cpk_df.groupby(['年月', '大区'])
+                        # 获取所有大区和时间段的组合
+                        if '时间段' in cpk_df.columns and '大区' in cpk_df.columns:
+                            grouped = cpk_df.groupby(['时间段', '大区'])
                             
-                            for (month, zone), group_data in grouped:
-                                # 计算每个大区每个月的统计指标
-                                monthly_summary = stats_calculator.calculate_summary_table(group_data, coefficients)
+                            for (period, zone), group_data in grouped:
+                                # 计算每个大区每个时间段的统计指标
+                                period_summary = stats_calculator.calculate_summary_table(group_data, coefficients)
                                 
                                 # 提取CPK值
-                                cpk_row = monthly_summary[monthly_summary['能力分析'] == 'cpk']
+                                cpk_row = period_summary[period_summary['能力分析'] == 'cpk']
                                 if not cpk_row.empty:
                                     row_dict = {
-                                        '年月': str(month),
+                                        '时间段': str(period),
                                         '大区': zone,
                                         '数据量': len(group_data)
                                     }
@@ -549,7 +607,7 @@ if uploaded_file is not None:
                                 abnormal_results = results_df[mask]
                                 
                                 if len(abnormal_results) > 0:
-                                    st.warning(f"发现 {len(abnormal_results)} 个大区/月份存在CPK异常")
+                                    st.warning(f"发现 {len(abnormal_results)} 个大区/时间段存在CPK异常")
                                     st.dataframe(abnormal_results, use_container_width=True)
                                     
                                     # 下载异常结果
@@ -557,7 +615,7 @@ if uploaded_file is not None:
                                     st.download_button(
                                         label="下载异常数据",
                                         data=csv,
-                                        file_name=f"cpk_zone_monthly_abnormal_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                                        file_name=f"cpk_zone_period_abnormal_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
                                         mime='text/csv'
                                     )
                                 else:
@@ -568,26 +626,22 @@ if uploaded_file is not None:
                             st.warning("没有足够的数据进行分析")
                     
                     elif filter_object == "按区域":
-                        # 按区域和月份分组计算
+                        # 按区域和时间段分组计算
                         results_list = []
                         
-                        # 确保有年月列
-                        if '年月' not in cpk_df.columns and '入库日期' in cpk_df.columns:
-                            cpk_df['年月'] = cpk_df['入库日期'].dt.to_period('M')
-                        
-                        # 获取所有区域和月份的组合
-                        if '年月' in cpk_df.columns and '区域' in cpk_df.columns:
-                            grouped = cpk_df.groupby(['年月', '区域'])
+                        # 获取所有区域和时间段的组合
+                        if '时间段' in cpk_df.columns and '区域' in cpk_df.columns:
+                            grouped = cpk_df.groupby(['时间段', '区域'])
                             
-                            for (month, region), group_data in grouped:
-                                # 计算每个区域每个月的统计指标
-                                monthly_summary = stats_calculator.calculate_summary_table(group_data, coefficients)
+                            for (period, region), group_data in grouped:
+                                # 计算每个区域每个时间段的统计指标
+                                period_summary = stats_calculator.calculate_summary_table(group_data, coefficients)
                                 
                                 # 提取CPK值
-                                cpk_row = monthly_summary[monthly_summary['能力分析'] == 'cpk']
+                                cpk_row = period_summary[period_summary['能力分析'] == 'cpk']
                                 if not cpk_row.empty:
                                     row_dict = {
-                                        '年月': str(month),
+                                        '时间段': str(period),
                                         '区域': region,
                                         '数据量': len(group_data)
                                     }
@@ -617,7 +671,7 @@ if uploaded_file is not None:
                                 abnormal_results = results_df[mask]
                                 
                                 if len(abnormal_results) > 0:
-                                    st.warning(f"发现 {len(abnormal_results)} 个区域/月份存在CPK异常")
+                                    st.warning(f"发现 {len(abnormal_results)} 个区域/时间段存在CPK异常")
                                     st.dataframe(abnormal_results, use_container_width=True)
                                     
                                     # 下载异常结果
@@ -625,7 +679,7 @@ if uploaded_file is not None:
                                     st.download_button(
                                         label="下载异常数据",
                                         data=csv,
-                                        file_name=f"cpk_monthly_abnormal_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                                        file_name=f"cpk_period_abnormal_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
                                         mime='text/csv'
                                     )
                                 else:
@@ -636,7 +690,7 @@ if uploaded_file is not None:
                             st.warning("没有足够的数据进行分析")
                     
                     elif filter_object == "按牧场":
-                        # 按牧场和月份分组计算
+                        # 按牧场和时间段分组计算
                         results = stats_calculator.calculate_statistics(cpk_df, coefficients)
                         
                         # 筛选CPK异常
@@ -662,7 +716,7 @@ if uploaded_file is not None:
                             st.download_button(
                                 label="下载异常数据",
                                 data=csv,
-                                file_name=f"cpk_monthly_farm_abnormal_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                                file_name=f"cpk_period_farm_abnormal_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
                                 mime='text/csv'
                             )
                         else:
