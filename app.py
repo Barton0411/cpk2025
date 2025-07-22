@@ -590,7 +590,10 @@ if uploaded_file is not None:
                                                 cpk_float = float(cpk_value)
                                                 row_dict[f'{trait}_CPK'] = cpk_float
                                                 # 判断是否异常
-                                                row_dict[f'{trait}_状态'] = '异常' if (cpk_float < cpk_min or cpk_float > cpk_max) else '正常'
+                                                if cpk_threshold_type == "小于阈值为异常":
+                                                    row_dict[f'{trait}_状态'] = '异常' if cpk_float < cpk_threshold else '正常'
+                                                else:
+                                                    row_dict[f'{trait}_状态'] = '异常' if (cpk_float < cpk_min or cpk_float > cpk_max) else '正常'
                                             except:
                                                 row_dict[f'{trait}_CPK'] = '-'
                                                 row_dict[f'{trait}_状态'] = '-'
@@ -654,7 +657,10 @@ if uploaded_file is not None:
                                                 cpk_float = float(cpk_value)
                                                 row_dict[f'{trait}_CPK'] = cpk_float
                                                 # 判断是否异常
-                                                row_dict[f'{trait}_状态'] = '异常' if (cpk_float < cpk_min or cpk_float > cpk_max) else '正常'
+                                                if cpk_threshold_type == "小于阈值为异常":
+                                                    row_dict[f'{trait}_状态'] = '异常' if cpk_float < cpk_threshold else '正常'
+                                                else:
+                                                    row_dict[f'{trait}_状态'] = '异常' if (cpk_float < cpk_min or cpk_float > cpk_max) else '正常'
                                             except:
                                                 row_dict[f'{trait}_CPK'] = '-'
                                                 row_dict[f'{trait}_状态'] = '-'
@@ -698,9 +704,14 @@ if uploaded_file is not None:
                         
                         # 创建异常标记
                         for col in cpk_columns:
-                            results[f'{col}_异常'] = results[col].apply(
-                                lambda x: '异常' if pd.notna(x) and (x < cpk_min or x > cpk_max) else '正常'
-                            )
+                            if cpk_threshold_type == "小于阈值为异常":
+                                results[f'{col}_异常'] = results[col].apply(
+                                    lambda x: '异常' if pd.notna(x) and x < cpk_threshold else '正常'
+                                )
+                            else:
+                                results[f'{col}_异常'] = results[col].apply(
+                                    lambda x: '异常' if pd.notna(x) and (x < cpk_min or x > cpk_max) else '正常'
+                                )
                         
                         # 筛选包含异常的行
                         abnormal_columns = [col for col in results.columns if col.endswith('_异常')]
